@@ -6,26 +6,12 @@ import os
 from dotenv import load_dotenv
 import logging
 
-# TODO: Marge von 0% ist noch falsch
-# TODO: Name, Menge, Marge grossschreiben
-# TODO: kostet zu kosten anpassen bei Mehrzahl
 # TODO: Funktion /item [name] vorschlagen -> speichert den Vorschlag in einer Liste im Sheet
 # TODO: Funktion /Preisanpassung [Preis] -> Du möchtest das der Preis x% günstiger/teurer wird? Bestätigen mit Buttons, speichert den Vorschlag in einer Liste im Sheet
 # TODO: Funktion /Rezept [item] -> Zeigt im embeded alle Zutaten an
 # TODO: Funktion /Rezeptfehler melden [item] [Erklärung] -> Speichert Eintrag in einer Liste im Sheet
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
+# TODO: Eingabe von Marge ändern damit es einfacher verständlich ist
+# TODO: Das Icon für Taler verwenden
 
 
 # Setup logging
