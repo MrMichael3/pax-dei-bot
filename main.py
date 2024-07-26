@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path='config/.env')
 token = os.getenv('DISCORD_TOKEN')
-#test_guild_id = int(os.getenv('GUILD_ID'))
 guild_ids_str = os.getenv('GUILD_IDS')
 
 # Convert guild_ids_str to a list of integers
