@@ -82,7 +82,9 @@ class SheetsCog(commands.Cog):
                 logger.error(f'Error during auto-complete: {e}')
                 return []
     
-    
+    @staticmethod
+    def format_number(num):
+        return f"{num:.2f}" if num % 1 else f"{int(num)}"
     
         
     @discord.app_commands.autocomplete(name=item_autocomplete)
@@ -122,12 +124,13 @@ class SheetsCog(commands.Cog):
                 item_price = item_price / (1+standard_margin) * (1+marge)
                 print(f'Marge von {name}  von {standard_margin} auf {marge} geändert!')
             item_price = item_price * menge
+            show_price = self.format_number(item_price)
             if menge > 1:
-                await interaction.response.send_message(f'{menge} {name} kosten {item_price} Taler')
+                await interaction.response.send_message(f'{menge} {name} kosten **{show_price} Taler**')
             else:
-                await interaction.response.send_message(f'{menge} {name} kostet {item_price} Taler')
+                await interaction.response.send_message(f'{menge} {name} kostet **{show_price} Taler**')
   
-            logger.info(f'Found item {name} with amount {menge} for the price of {item_price}')
+            logger.info(f'Found item {name} with amount {menge} for the price of {show_price}')
         except Exception as e:
             logger.error(f'Error processing search command: {e}')
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
