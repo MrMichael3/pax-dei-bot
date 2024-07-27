@@ -31,7 +31,7 @@ except ValueError:
     raise ValueError("GUILD_IDS must be a comma-separated list of integers.")
 sheet_id = os.getenv('SPREADSHEET_ID')
 
-def get_google_client():
+async def call_google_api():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_path = 'config/credentials.json'
     try:
@@ -48,10 +48,14 @@ def get_google_client():
 class SheetsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.sheet = None
+        
+    async def load_sheet(self, sheet_id):
+        
         try:
-            
-            self.sheet = get_google_client().open_by_key(sheet_id).worksheet('Alle Items')
-            logger.info("Loaded sheet 'Alle Items")
+            google_client = await call_google_api()
+            self.sheet = google_client.open_by_key(sheet_id).worksheet('Alle Items')
+            logger.info("Loaded sheet 'Alle Items'")
         except Exception as e:
             logger.error(f'Error loading sheet: {e}')
     
@@ -129,10 +133,11 @@ class SheetsCog(commands.Cog):
 
 
 
-async def setup(bot:commands.Bot):
+async def setup(bot: commands.Bot):
     try:
-    
-        await bot.add_cog(SheetsCog(bot))
-        logger.info('SheetsCog loaded')
+        sheets_cog = SheetsCog(bot)
+        await sheets_cog.load_sheet(sheet_id)
+        await bot.add_cog(sheets_cog)
+        logger.info('SheetsCog loaded and Google Sheet loaded successfully.')
     except Exception as e:
         logger.error(f'Error loading SheetsCog: {e}')
