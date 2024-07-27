@@ -49,6 +49,7 @@ class SheetsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.sheet = None
+        self.data_cache = None
         
     async def load_sheet(self, sheet_id):
         
@@ -56,14 +57,17 @@ class SheetsCog(commands.Cog):
             google_client = await call_google_api()
             self.sheet = google_client.open_by_key(sheet_id).worksheet('Alle Items')
             logger.info("Loaded sheet 'Alle Items'")
+            self.data_cache = self.sheet.get_all_values()
         except Exception as e:
             logger.error(f'Error loading sheet: {e}')
     
     
     async def item_autocomplete(self, interaction: discord.Interaction, current: str) -> list[discord.app_commands.Choice[str]]:
+            if self.data_cache is None:
+                await self.load_sheet(sheet_id)
             try:
-                data = self.sheet.get_all_values()
-                item_names = [row[0] for row in data[1:]]  # Items in column A
+                
+                item_names = [row[0] for row in self.data_cache[1:]]  # Items in column A
 
                 # Filter and provide auto-complete choices
                 choices = [discord.app_commands.Choice(name=item, value=item) for item in item_names if current.lower() in item.lower()]
@@ -83,8 +87,10 @@ class SheetsCog(commands.Cog):
     @discord.app_commands.command(name="suche", description="sucht einen Gegenstand und gibt den Listenpreis an")
     @discord.app_commands.describe(name="Name des gesuchten Gegenstandes", menge="Optional: gewünschte Menge", marge="Optional: gewünschte Marge")
     async def search(self, interaction:discord.Interaction, name:str, menge:int = 1, marge: float = None):
+        if self.data_cache is None:
+            await self.load_sheet(sheet_id)
         try:
-            data = self.sheet.get_all_values()
+            data = self.data_cache
             item_names = [row[0] for row in data[1:]] # items in column A
             prices = [
                 float(row[1].replace('€', '').replace('.', '').replace(',', '.').strip())
