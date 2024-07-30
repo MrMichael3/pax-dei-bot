@@ -10,8 +10,6 @@ import logging
 # TODO: Funktion /Preisanpassung [Preis] -> Du möchtest das der Preis x% günstiger/teurer wird? Bestätigen mit Buttons, speichert den Vorschlag in einer Liste im Sheet
 # TODO: Funktion /Rezept [item] -> Zeigt im embeded alle Zutaten an
 # TODO: Funktion /Rezeptfehler melden [item] [Erklärung] -> Speichert Eintrag in einer Liste im Sheet
-# TODO: Eingabe von Marge ändern damit es einfacher verständlich ist
-# TODO: Das Icon für Taler verwenden
 
 
 # Setup logging
@@ -30,6 +28,11 @@ try:
 except ValueError:
     raise ValueError("GUILD_IDS must be a comma-separated list of integers.")
 sheet_id = os.getenv('SPREADSHEET_ID')
+
+# taler icon
+taler_icon_server_id = os.getenv('ICON_TALER_SERVER_ID')
+taler_icon_name = os.getenv('ICON_TALER_NAME')
+logger.info(f'icon server id: {taler_icon_server_id} and icon name: {taler_icon_name}')
 
 async def call_google_api():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -80,12 +83,30 @@ class SheetsCog(commands.Cog):
     def format_number(num):
         return f"{num:.2f}" if num % 1 else f"{int(num)}"
     
+    @staticmethod
+    def format_margin(marge):
+        return f'{int(marge)}' if marge.is_integer() else f'{marge}'
+    
+    
+    def get_custom_emoji(self):
+        guild = self.bot.get_guild(int(taler_icon_server_id))
+        if guild:
+            for emoji in guild.emojis:
+                if str(emoji) == str(taler_icon_name):
+                    return str(emoji)
+        return None
+    
+    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    @discord.app_commands.command(name='update', description='Lädt die aktuelle Preise des Google Sheets. Muss nach manuellen Preisänderungen ausgeführt werden.')
+    async def update(self, interaction:discord.Interaction):
+        await self.load_sheet(sheet_id)
+        await interaction.response.send_message('Die Liste wurde aktualisiert')
+    
         
     @discord.app_commands.autocomplete(name=item_autocomplete)
     @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
-    #@discord.app_commands.guilds(discord.Object(id=guild_id))   
     @discord.app_commands.command(name="suche", description="sucht einen Gegenstand und gibt den Listenpreis an")
-    @discord.app_commands.describe(name="Name des gesuchten Gegenstandes", menge="Optional: gewünschte Menge", marge="Optional: gewünschte Marge")
+    @discord.app_commands.describe(name="Name des gesuchten Gegenstandes", menge="Optional: gewünschte Menge", marge="Optional: gewünschte Marge in Prozent")
     async def search(self, interaction:discord.Interaction, name:str, menge:int = 1, marge: float = None):
         if self.data_cache is None:
             await self.load_sheet(sheet_id)
@@ -112,19 +133,44 @@ class SheetsCog(commands.Cog):
         
             index = item_names.index(name)
             item_price = prices[index]
-            print(item_price)
             standard_margin = margins[index]
-        
+            logger.info(f'standard margin: {standard_margin}')
             # custom margin
             if marge is not None:
-                item_price = item_price / (1+standard_margin) * (1+marge)
-                print(f'Marge von {name}  von {standard_margin} auf {marge} geändert!')
-            item_price = item_price * menge
+                marge_decimal = marge / 100
+                item_price = item_price / (1+standard_margin / 100) * (1+marge_decimal)
             show_price = self.format_number(item_price)
+            
+            taler_icon = self.get_custom_emoji()
+            if not taler_icon:
+                taler_icon = "Taler"
+                
             if menge > 1:
-                await interaction.response.send_message(f'{menge} {name} kosten **{show_price} Taler**')
+                if marge is None:
+                    formatted_marge = self.format_margin(standard_margin)
+                    if standard_margin == 0:
+                        await interaction.response.send_message(f'{menge} {name} kosten **{show_price} {taler_icon}**')
+                    else:
+                        await interaction.response.send_message(f'{menge} {name} kosten **{show_price} {taler_icon}** bei einer Standardmarge von {formatted_marge}%')
+                else:
+                    formatted_marge = self.format_margin(marge)
+                    if marge == 0:
+                        await interaction.response.send_message(f'{menge} {name} kosten **{show_price} {taler_icon}** bei 0% Marge')
+                    else:
+                        await interaction.response.send_message(f'{menge} {name} kosten **{show_price} {taler_icon}** bei einer Marge von {formatted_marge}%')
             else:
-                await interaction.response.send_message(f'{menge} {name} kostet **{show_price} Taler**')
+                if marge is None:
+                    formatted_marge = self.format_margin(standard_margin)
+                    if standard_margin == 0:
+                        await interaction.response.send_message(f'{menge} {name} kostet **{show_price} {taler_icon}**')
+                    else:
+                        await interaction.response.send_message(f'{menge} {name} kostet **{show_price} {taler_icon}** bei einer Standardmarge von {formatted_marge}%')
+                else:
+                    formatted_marge = self.format_margin(marge)
+                    if marge == 0:
+                        await interaction.response.send_message(f'{menge} {name} kostet **{show_price} {taler_icon}** bei 0% Marge')
+                    else:
+                        await interaction.response.send_message(f'{menge} {name} kostet **{show_price} {taler_icon}** bei einer Marge von {formatted_marge}%')
   
             logger.info(f'Found item {name} with amount {menge} for the price of {show_price}')
         except Exception as e:
