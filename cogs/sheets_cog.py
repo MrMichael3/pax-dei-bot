@@ -7,8 +7,6 @@ from dotenv import load_dotenv
 import logging
 from datetime import datetime
 
-# TODO: Funktion /item [name] vorschlagen -> speichert den Vorschlag in einer Liste im Sheet
-# TODO: Funktion /Rezept [item] -> Zeigt im embeded alle Zutaten an
 # TODO: Funktion /Rezeptfehler melden [item] [Erklärung] -> Speichert Eintrag in einer Liste im Sheet
 
 
@@ -52,8 +50,10 @@ class SheetsCog(commands.Cog):
         self.bot = bot
         self.sheet_all_items = None
         self.sheet_suggestions = None
+        self.sheet_calculations = None
         self.data_cache = None
         self.suggestions_cache = None
+        self.calculations_cache = None
         
     async def load_sheet(self, sheet_id):
         
@@ -61,9 +61,11 @@ class SheetsCog(commands.Cog):
             google_client = await call_google_api()
             self.sheet_all_items = google_client.open_by_key(sheet_id).worksheet('Alle Items')
             self.sheet_suggestions = google_client.open_by_key(sheet_id).worksheet('Anpassungen')
+            self.sheet_calculations = google_client.open_by_key(sheet_id).worksheet('Berechnungen')
             logger.info("Loaded sheets")
             self.data_cache = self.sheet_all_items.get_all_values()
             self.suggestions_cache = self.sheet_suggestions.get_all_values()
+            self.calculations_cache = self.sheet_calculations.get_all_values()
         except Exception as e:
             logger.error(f'Error loading sheet: {e}')
     
@@ -103,8 +105,9 @@ class SheetsCog(commands.Cog):
     @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.command(name='update', description='Lädt die aktuelle Preise des Google Sheets. Muss nach manuellen Preisänderungen ausgeführt werden.')
     async def update(self, interaction:discord.Interaction):
+        await interaction.response.defer()
         await self.load_sheet(sheet_id)
-        await interaction.response.send_message('Die Liste wurde aktualisiert')
+        await interaction.followup.send('Die Liste wurde aktualisiert')
     
         
     @discord.app_commands.autocomplete(name=item_autocomplete)
@@ -248,6 +251,97 @@ class SheetsCog(commands.Cog):
             logger.error(f'Error processing new item suggestion command: {e}')
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
 
+
+    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    @discord.app_commands.command(name='rezept', description='Zeigt das Rezept eines Gegenstandes an.')
+    @discord.app_commands.describe(item="Name des Gegenstandes")
+    @discord.app_commands.autocomplete(item=item_autocomplete)
+    async def recipe(self, interaction: discord.Interaction, item: str):
+        if self.data_cache is None or self.calculations_cache is None:
+            await self.load_sheet(sheet_id)
+
+        try:
+            data = self.data_cache
+            item_names = [row[0] for row in data[1:]]
+            if item not in item_names:
+                await interaction.response.send_message(f'Item {item} ist nicht in der Liste. Mit dem Command "/item-vorschlagen" kannst du fehlende Items melden.')
+                return
+            prices = [
+                float(row[1].replace('€', '').replace('.', '').replace(',', '.').strip())
+                if row[1].replace('€', '').replace('.', '').replace(',', '').strip().replace('.', '', 1).isdigit()
+                else 0
+                for row in data[1:]
+            ]
+            margins = [
+                float(row[2].replace('€', '').replace(',', '.').strip().replace('%', ''))
+                if row[2].replace('€', '').replace(',', '.').strip().replace('%', '').replace('.', '', 1).isdigit()
+                else 0
+                for row in data[1:]
+            ] 
+
+            # Find the item row in calculations sheet
+            item_row = None
+            item_column = None
+            for row in self.calculations_cache:
+                if row[3] == item:
+                    item_row = row
+                    item_column = "D"
+                    break
+                elif row[17] == item:
+                    item_row = row
+                    item_column = "R"
+                    break
+                elif row[32] == item:
+                    item_row = row
+                    item_column = "AG"
+                    break
+
+            if not item_row:
+                await interaction.response.send_message(f'Kein Rezept für {item} gefunden.')
+                return
+
+            ingredients = []
+            production_time = 0        
+            if(item_column == "D"):
+                start = 5
+                production_time = item_row[14]
+                for i in range(0,7,2):  # Up to 4 ingredients
+                    ingredient = item_row[start  + i ]               
+                    quantity = item_row[start  + i + 1]
+                    if ingredient and quantity:
+                        ingredients.append((ingredient, quantity))
+            elif(item_column == "R"):
+                start = 19
+                for i in range(0,9,2):  # Up to 5 ingredients
+                    ingredient = item_row[start  + i ]           
+                    quantity = item_row[start  + i + 1]
+                    if ingredient and quantity:
+                        ingredients.append((ingredient, quantity))
+            elif(item_column == "AG"):
+                start = 34
+                for i in range(0,17,2):  # Up to 9 ingredients
+                    ingredient = item_row[start  + i ]
+                    quantity = item_row[start  + i + 1]
+                    if ingredient and quantity:
+                        ingredients.append((ingredient, quantity))
+                    
+            # Find price of the item
+            index = item_names.index(item)
+            item_price = prices[index]
+            margin = margins[index]
+            taler_icon = self.get_custom_emoji()
+            # Create an embed
+            embed = discord.Embed(title=f"Rezept für {item}", color=discord.Color.blue())
+            embed.add_field(name=f"Preis: {item_price} {taler_icon}", value=f"Marge: {margin}%", inline=False)
+            if production_time:
+                embed.set_footer(text=f"Herstellungszeit: {production_time} min")
+            embed.add_field(name="Zutaten", value="\n".join(f"{qty}x **{ing}**" for ing, qty in ingredients), inline=False)
+           
+
+            await interaction.response.send_message(embed=embed)
+        except Exception as e:
+            logger.error(f'Error processing recipe command: {e}')
+            await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
 
 async def setup(bot: commands.Bot):
     try:
