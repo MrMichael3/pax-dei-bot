@@ -8,7 +8,6 @@ import logging
 from datetime import datetime
 
 # TODO: Funktion /item [name] vorschlagen -> speichert den Vorschlag in einer Liste im Sheet
-# TODO: Funktion /Preisanpassung [Preis] -> Du möchtest das der Preis x% günstiger/teurer wird? Bestätigen mit Buttons, speichert den Vorschlag in einer Liste im Sheet
 # TODO: Funktion /Rezept [item] -> Zeigt im embeded alle Zutaten an
 # TODO: Funktion /Rezeptfehler melden [item] [Erklärung] -> Speichert Eintrag in einer Liste im Sheet
 
@@ -54,6 +53,7 @@ class SheetsCog(commands.Cog):
         self.sheet_all_items = None
         self.sheet_suggestions = None
         self.data_cache = None
+        self.suggestions_cache = None
         
     async def load_sheet(self, sheet_id):
         
@@ -63,6 +63,7 @@ class SheetsCog(commands.Cog):
             self.sheet_suggestions = google_client.open_by_key(sheet_id).worksheet('Anpassungen')
             logger.info("Loaded sheets")
             self.data_cache = self.sheet_all_items.get_all_values()
+            self.suggestions_cache = self.sheet_suggestions.get_all_values()
         except Exception as e:
             logger.error(f'Error loading sheet: {e}')
     
@@ -200,7 +201,7 @@ class SheetsCog(commands.Cog):
                 else 0
                 for row in data[1:]
             ]
-            timestamp = datetime.now().strftime("%d.%m.%Y")
+            timestamp = datetime.now().strftime("%d.%m.%y")
             index = item_names.index(item)
             old_price = prices[index]
             user = interaction.user.name
@@ -214,8 +215,38 @@ class SheetsCog(commands.Cog):
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
 
 
+    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    @discord.app_commands.command(name='neues-item', description='Schlägt ein fehlendes Item vor.')
+    @discord.app_commands.describe(item="Name des fehlenden Gegenstandes")
+    async def new_item_suggestion(self, interaction: discord.Interaction, item: str):
+        if self.data_cache is None:
+            await self.load_sheet(sheet_id)
 
+        try:
+            # Validate item
+            item_names = [row[0] for row in self.data_cache[1:]]
+            if item in item_names:
+                await interaction.response.send_message(f'**{item}** ist bereits in der Liste.')
+                return
+            # Validate item in new items cache
+            suggested_items = [row[1] for row in self.suggestions_cache[1:]]  # Items in column H
+            if item in suggested_items:
+                await interaction.response.send_message(f'**{item}** wurde bereits vorgeschlagen.')
+                return
+            # Append new item suggestion to the sheet
+            timestamp = datetime.now().strftime("%d.%m.%y")
+            user = interaction.user.name
+            suggestion_row = [timestamp, item, user]
+            self.sheet_suggestions.append_row(suggestion_row, table_range='G:I')
+            # Update new items cache
+            self.suggestions_cache.append([timestamp, item, user])
 
+            await interaction.response.send_message(f'Der Gegenstand **{item}** wird geprüft und sobald möglich der Liste hinzugefügt. Danke für die Meldung. Nutze den Befehl um weitere Gegenstände zu melden.')
+            logger.info(f'New item {item} suggested by {user}')
+            
+        except Exception as e:
+            logger.error(f'Error processing new item suggestion command: {e}')
+            await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
 
 
 async def setup(bot: commands.Bot):
