@@ -144,6 +144,7 @@ class SheetsCog(commands.Cog):
             if marge is not None:
                 marge_decimal = marge / 100
                 item_price = item_price / (1+standard_margin / 100) * (1+marge_decimal)
+            item_price = item_price * menge
             show_price = self.format_number(item_price)
             
             taler_icon = self.get_custom_emoji()
