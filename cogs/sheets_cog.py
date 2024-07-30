@@ -32,7 +32,6 @@ sheet_id = os.getenv('SPREADSHEET_ID')
 # taler icon
 taler_icon_server_id = os.getenv('ICON_TALER_SERVER_ID')
 taler_icon_name = os.getenv('ICON_TALER_NAME')
-logger.info(f'icon server id: {taler_icon_server_id} and icon name: {taler_icon_name}')
 
 async def call_google_api():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -134,7 +133,7 @@ class SheetsCog(commands.Cog):
             index = item_names.index(name)
             item_price = prices[index]
             standard_margin = margins[index]
-            logger.info(f'standard margin: {standard_margin}')
+
             # custom margin
             if marge is not None:
                 marge_decimal = marge / 100
