@@ -5,6 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import os
 from dotenv import load_dotenv
 import logging
+from datetime import datetime
 
 # TODO: Funktion /item [name] vorschlagen -> speichert den Vorschlag in einer Liste im Sheet
 # TODO: Funktion /Preisanpassung [Preis] -> Du möchtest das der Preis x% günstiger/teurer wird? Bestätigen mit Buttons, speichert den Vorschlag in einer Liste im Sheet
@@ -50,16 +51,18 @@ async def call_google_api():
 class SheetsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.sheet = None
+        self.sheet_all_items = None
+        self.sheet_suggestions = None
         self.data_cache = None
         
     async def load_sheet(self, sheet_id):
         
         try:
             google_client = await call_google_api()
-            self.sheet = google_client.open_by_key(sheet_id).worksheet('Alle Items')
-            logger.info("Loaded sheet 'Alle Items'")
-            self.data_cache = self.sheet.get_all_values()
+            self.sheet_all_items = google_client.open_by_key(sheet_id).worksheet('Alle Items')
+            self.sheet_suggestions = google_client.open_by_key(sheet_id).worksheet('Anpassungen')
+            logger.info("Loaded sheets")
+            self.data_cache = self.sheet_all_items.get_all_values()
         except Exception as e:
             logger.error(f'Error loading sheet: {e}')
     
@@ -92,7 +95,8 @@ class SheetsCog(commands.Cog):
         if guild:
             for emoji in guild.emojis:
                 if str(emoji) == str(taler_icon_name):
-                    return str(emoji)
+                    return str(emoji)                
+            return "Taler"
         return None
     
     @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
@@ -141,8 +145,7 @@ class SheetsCog(commands.Cog):
             show_price = self.format_number(item_price)
             
             taler_icon = self.get_custom_emoji()
-            if not taler_icon:
-                taler_icon = "Taler"
+            
                 
             if menge > 1:
                 if marge is None:
@@ -177,7 +180,38 @@ class SheetsCog(commands.Cog):
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
     
     
-    
+    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    @discord.app_commands.describe(item="Name des Gegenstandes", neuer_preis="Neuer Preisvorschlag")
+    @discord.app_commands.command(name="preisanpassung", description="Schlage eine Preisänderung vor")
+    @discord.app_commands.autocomplete(item=item_autocomplete)
+    async def price_suggestion(self, interaction:discord.Interaction, item: str, neuer_preis: float):
+        if self.data_cache is None:
+            await self.load_sheet(sheet_id)
+        
+        try:
+            data = self.data_cache
+            item_names = [row[0] for row in data[1:]]
+            if item not in item_names:
+                await interaction.response.send_message(f'Item {item} ist nicht in der Liste. Mit dem Command "/item-vorschlagen" kannst du fehlende Items melden.')
+                return
+            prices = [
+                float(row[1].replace('€', '').replace('.', '').replace(',', '.').strip())
+                if row[1].replace('€', '').replace('.', '').replace(',', '').strip().replace('.', '', 1).isdigit()
+                else 0
+                for row in data[1:]
+            ]
+            timestamp = datetime.now().strftime("%d.%m.%Y")
+            index = item_names.index(item)
+            old_price = prices[index]
+            user = interaction.user.name
+            suggestion_row = [timestamp,item, old_price, neuer_preis, user]
+            self.sheet_suggestions.append_row(suggestion_row,table_range='A:E')
+            taler_icon = self.get_custom_emoji()
+            await interaction.response.send_message(f'Preisanpassung für **{item}** von {old_price}{taler_icon} auf **{neuer_preis}{taler_icon}** vorgeschlagen. Der Stadtrat schaut sich die Vorschläge regelmässig an und nimmt wenn nötig, Änderungen an den Preisen vor.')
+            logger.info(f'Price adjustment for {item} suggested by {user}: {old_price} -> {neuer_preis}')
+        except Exception as e:
+            logger.error(f'Error processing price adjustment command: {e}')
+            await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
 
 
 
