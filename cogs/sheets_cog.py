@@ -299,7 +299,8 @@ class SheetsCog(commands.Cog):
                 return
 
             ingredients = []
-            production_time = 0        
+            production_time = 0
+            recipe_link = ""       
             if(item_column == "D"):
                 start = 5
                 production_time = item_row[14]
@@ -316,6 +317,8 @@ class SheetsCog(commands.Cog):
                     if ingredient and quantity:
                         ingredients.append((ingredient, quantity))
             elif(item_column == "AG"):
+                item_links = [row[3] for row in data[1:]] #TODO: Change google sheet, add links in column D and update App scripts
+                recipe_link =item_links[index]
                 start = 34
                 for i in range(0,17,2):  # Up to 9 ingredients
                     ingredient = item_row[start  + i ]
@@ -333,6 +336,8 @@ class SheetsCog(commands.Cog):
             embed.add_field(name=f"Preis: {item_price} {taler_icon}", value=f"Marge: {margin}%", inline=False)
             if production_time:
                 embed.set_footer(text=f"Herstellungszeit: {production_time} min")
+            elif recipe_link:
+                embed.set_footer(text=f"Spoiler: {recipe_link}")
             embed.add_field(name="Zutaten", value="\n".join(f"{qty}x **{ing}**" for ing, qty in ingredients), inline=False)
            
 
