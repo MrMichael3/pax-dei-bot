@@ -298,7 +298,7 @@ class SheetsCog(commands.Cog):
             if not item_row:
                 await interaction.response.send_message(f'Kein Rezept für {item} gefunden.')
                 return
-
+            index = item_names.index(item)
             ingredients = []
             production_time = 0
             recipe_link = ""       
@@ -318,8 +318,8 @@ class SheetsCog(commands.Cog):
                     if ingredient and quantity:
                         ingredients.append((ingredient, quantity))
             elif(item_column == "AG"):
-                item_links = [row[3] for row in data[1:]] #TODO: Change google sheet, add links in column D and update App scripts
-                recipe_link =item_links[index]
+                #item_links = [row[3] for row in data[1:]] #TODO: Change google sheet, add links in column D and update App scripts
+                #recipe_link =item_links[index]
                 start = 34
                 for i in range(0,17,2):  # Up to 9 ingredients
                     ingredient = item_row[start  + i ]
@@ -328,7 +328,7 @@ class SheetsCog(commands.Cog):
                         ingredients.append((ingredient, quantity))
                     
             # Find price of the item
-            index = item_names.index(item)
+            
             item_price = prices[index]
             margin = margins[index]
             taler_icon = self.get_custom_emoji()
