@@ -7,8 +7,6 @@ from dotenv import load_dotenv
 import logging
 from datetime import datetime
 
-# TODO: Funktion /Rezeptfehler melden [item] [Erklärung] -> Speichert Eintrag in einer Liste im Sheet
-
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -342,6 +340,34 @@ class SheetsCog(commands.Cog):
         except Exception as e:
             logger.error(f'Error processing recipe command: {e}')
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
+            
+    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    @discord.app_commands.command(name='rezeptfehler', description='Melde einen Fehler im Rezept eines Gegenstandes.')
+    @discord.app_commands.describe(item="Name des Gegenstandes", explanation="Erklärung des Fehlers")
+    @discord.app_commands.autocomplete(item=item_autocomplete)
+    async def report_recipe_error(self, interaction: discord.Interaction, item: str, explanation: str):
+        if self.data_cache is None:
+            await self.load_sheet(sheet_id)
+
+        try:
+            # Validate item
+            item_names = [row[0] for row in self.data_cache[1:]]
+            if item not in item_names:
+                await interaction.response.send_message(f'Item {item} ist nicht in der Liste. Mit dem Command "/item-vorschlagen" kannst du fehlende Items melden.')
+                return
+
+            # Append error report to the sheet
+            timestamp = datetime.now().strftime("%d.%m.%y")
+            user = interaction.user.name
+            report_row = [timestamp, item, explanation, user]
+            self.sheet_suggestions.append_row(report_row, table_range='K:N')
+
+            await interaction.response.send_message(f'Fehlerbericht für **{item}** wurde eingereicht. Vielen Dank für deine Rückmeldung. Der Stadtrat wird sich darum kümmern.')
+            logger.info(f'Recipe error reported for {item} by {user}: {explanation}')
+        except Exception as e:
+            logger.error(f'Error processing recipe error report command: {e}')
+            await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
+   
 
 async def setup(bot: commands.Bot):
     try:
