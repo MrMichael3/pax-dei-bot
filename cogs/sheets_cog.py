@@ -374,12 +374,28 @@ class SheetsCog(commands.Cog):
             logger.error(f'Error processing recipe error report command: {e}')
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
    
+   
+   
+   # Function to find and print all duplicate items
+    async def find_and_print_duplicates(self):
+        if self.data_cache is None:
+            await self.load_sheet(sheet_id)
+        try:
+            item_names = [row[0] for row in self.data_cache[1:] if row[0]]  # Exclude empty strings
+            duplicates = set([item for item in item_names if item_names.count(item) > 1])
+            if duplicates:
+                logger.info(f'Duplicate items found: {duplicates}')
+            else:
+                logger.info('No duplicate items found.')
+        except Exception as e:
+            logger.error(f'Error finding duplicates: {e}')
 
 async def setup(bot: commands.Bot):
     try:
         sheets_cog = SheetsCog(bot)
         await sheets_cog.load_sheet(sheet_id)
         await bot.add_cog(sheets_cog)
+        await sheets_cog.find_and_print_duplicates()
         logger.info('SheetsCog loaded and Google Sheet loaded successfully.')
     except Exception as e:
         logger.error(f'Error loading SheetsCog: {e}')
