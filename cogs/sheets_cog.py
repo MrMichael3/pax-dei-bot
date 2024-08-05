@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 import logging
 from datetime import datetime
-
+import asyncio
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -61,9 +61,9 @@ class SheetsCog(commands.Cog):
             self.sheet_suggestions = google_client.open_by_key(sheet_id).worksheet('Anpassungen')
             self.sheet_calculations = google_client.open_by_key(sheet_id).worksheet('Berechnungen')
             logger.info("Loaded sheets")
-            self.data_cache = self.sheet_all_items.get_all_values()
-            self.suggestions_cache = self.sheet_suggestions.get_all_values()
-            self.calculations_cache = self.sheet_calculations.get_all_values()
+            self.data_cache = await asyncio.to_thread(self.sheet_all_items.get_all_values)
+            self.suggestions_cache = await asyncio.to_thread(self.sheet_suggestions.get_all_values)
+            self.calculations_cache = await asyncio.to_thread(self.sheet_calculations.get_all_values)
         except Exception as e:
             logger.error(f'Error loading sheet: {e}')
     
@@ -208,7 +208,7 @@ class SheetsCog(commands.Cog):
             old_price = prices[index]
             user = interaction.user.name
             suggestion_row = [timestamp,item, old_price, neuer_preis, user]
-            self.sheet_suggestions.append_row(suggestion_row,table_range='A:E')
+            await asyncio.to_thread(self.sheet_suggestions.append_row,suggestion_row,table_range='A:E')
             taler_icon = self.get_custom_emoji()
             await interaction.response.send_message(f'Preisanpassung für **{item}** von {old_price}{taler_icon} auf **{neuer_preis}{taler_icon}** vorgeschlagen. Der Stadtrat schaut sich die Vorschläge regelmässig an und nimmt wenn nötig, Änderungen an den Preisen vor.')
             logger.info(f'Price adjustment for {item} suggested by {user}: {old_price} -> {neuer_preis}')
