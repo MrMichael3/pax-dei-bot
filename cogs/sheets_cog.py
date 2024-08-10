@@ -67,7 +67,10 @@ class SheetsCog(commands.Cog):
         except Exception as e:
             logger.error(f'Error loading sheet: {e}')
     
-    
+    async def update_sheet(self):
+        await self.load_sheet(sheet_id)
+        logger.info('Sheet updated successfully')
+        
     async def item_autocomplete(self, interaction: discord.Interaction, current: str) -> list[discord.app_commands.Choice[str]]:
             if self.data_cache is None:
                 await self.load_sheet(sheet_id)
