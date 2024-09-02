@@ -21,12 +21,23 @@ bot = commands.Bot( command_prefix='!', intents=intents)
 
 @bot.event
 async def on_ready():
-    for guild_id in guild_ids:
-            guild = discord.Object(id=guild_id)
-            await bot.tree.sync(guild=guild)
-            print(f'Synced commands to guild {guild_id}')
-    print(f'We have logged in as {bot.user}')
+
+##for guild_id in guild_ids:
+      ##      guild = discord.Object(id=guild_id)
+        ##    await bot.tree.sync(guild=guild)
+          ##  print(f'Synced commands to guild {guild_id}')
     
+    await clear_old_global_commands() 
+    await bot.tree.sync()
+    
+    print(f'We have logged in as {bot.user}')
+
+async def clear_old_global_commands():
+    
+    global_commands = await bot.tree.fetch_commands()
+    for command in global_commands:
+        await bot.http.delete_global_command(bot.user.id, command.id)
+
 async def load_cogs():
     await bot.load_extension('cogs.sheets_cog')
     print("loaded extension ")

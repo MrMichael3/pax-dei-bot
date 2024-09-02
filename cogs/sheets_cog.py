@@ -103,7 +103,7 @@ class SheetsCog(commands.Cog):
             return "Taler"
         return None
     
-    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    ##@discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.command(name='update', description='Lädt die aktuelle Preise des Google Sheets. Muss nach manuellen Preisänderungen ausgeführt werden.')
     async def update(self, interaction:discord.Interaction):
         await interaction.response.defer()
@@ -112,7 +112,7 @@ class SheetsCog(commands.Cog):
     
         
     @discord.app_commands.autocomplete(name=item_autocomplete)
-    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    ##@discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.command(name="suche", description="sucht einen Gegenstand und gibt den Listenpreis an")
     @discord.app_commands.describe(name="Name des gesuchten Gegenstandes", menge="Optional: gewünschte Menge", marge="Optional: gewünschte Marge in Prozent")
     async def search(self, interaction:discord.Interaction, name:str, menge:int = 1, marge: float = None):
@@ -186,7 +186,7 @@ class SheetsCog(commands.Cog):
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
     
     
-    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    ##@discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.describe(item="Name des Gegenstandes", neuer_preis="Neuer Preisvorschlag")
     @discord.app_commands.command(name="preisanpassung", description="Schlage eine Preisänderung vor")
     @discord.app_commands.autocomplete(item=item_autocomplete)
@@ -220,7 +220,7 @@ class SheetsCog(commands.Cog):
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
 
 
-    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    ##@discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.command(name='neues-item', description='Schlägt ein fehlendes Item vor.')
     @discord.app_commands.describe(item="Name des fehlenden Gegenstandes")
     async def new_item_suggestion(self, interaction: discord.Interaction, item: str):
@@ -254,7 +254,7 @@ class SheetsCog(commands.Cog):
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
 
 
-    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    ##@discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.command(name='rezept', description='Zeigt das Rezept eines Gegenstandes an.')
     @discord.app_commands.describe(item="Name des Gegenstandes")
     @discord.app_commands.autocomplete(item=item_autocomplete)
@@ -350,7 +350,7 @@ class SheetsCog(commands.Cog):
             logger.error(f'Error processing recipe command: {e}')
             await interaction.response.send_message('Es gab einen Fehler bei der Verarbeitung des Befehls.')
             
-    @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    ##@discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.command(name='rezeptfehler', description='Melde einen Fehler im Rezept eines Gegenstandes.')
     @discord.app_commands.describe(item="Name des Gegenstandes", explanation="Erklärung des Fehlers")
     @discord.app_commands.autocomplete(item=item_autocomplete)
