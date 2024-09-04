@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import logging
 from datetime import datetime
 import asyncio
+import json
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,11 +24,22 @@ try:
     guild_ids = [int(id) for id in guild_ids_env.split(',')]
 except ValueError:
     raise ValueError("GUILD_IDS must be a comma-separated list of integers.")
-sheet_id = os.getenv('SPREADSHEET_ID')
+
+default_spreadsheet_id = os.getenv('DEFAULT_SPREADSHEET_ID')
 
 # taler icon
 taler_icon_server_id = os.getenv('ICON_TALER_SERVER_ID')
 taler_icon_name = os.getenv('ICON_TALER_NAME')
+
+if os.path.exists('config/guild_settings.json'):
+    with open('config/guild_settings.json', 'r') as f:
+        guild_settings = json.load(f)
+else:
+    logger.info('couldnt find json')
+
+
+
+
 
 async def call_google_api():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -44,39 +56,73 @@ async def call_google_api():
  
 
 class SheetsCog(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot):   
         self.bot = bot
-        self.sheet_all_items = None
-        self.sheet_suggestions = None
-        self.sheet_calculations = None
-        self.data_cache = None
-        self.suggestions_cache = None
-        self.calculations_cache = None
-        
+        self.sheet_cache = {}  # Cache to store data for each spreadsheet ID
+        self.google_client = None
+    
+    async def get_spreadsheet_id_for_guild(self, guild_id: int) -> str:
+        # Fetch the spreadsheet ID for the provided guild ID.
+        for guild in guild_settings["guilds"]:
+            if guild["guild_id"] == str(guild_id):
+                match guild["spreadsheet"]:
+                    case "default":
+                        return os.getenv('DEFAULT_SPREADSHEET_ID')
+                    case "sternengarde":
+                        return os.getenv('STERNENGARDE_SPREADSHEET_ID')
+                    case _:
+                        return default_spreadsheet_id
+        return default_spreadsheet_id    
+    
     async def load_sheet(self, sheet_id):
+        if sheet_id in self.sheet_cache:
+            # Sheet is already cached
+            logger.info(f"Using cached data for sheet ID: {sheet_id}")
+            return self.sheet_cache[sheet_id]
         
+        # Load new sheet and cache it
         try:
-            google_client = await call_google_api()
-            self.sheet_all_items = google_client.open_by_key(sheet_id).worksheet('Alle Items')
-            self.sheet_suggestions = google_client.open_by_key(sheet_id).worksheet('Anpassungen')
-            self.sheet_calculations = google_client.open_by_key(sheet_id).worksheet('Berechnungen')
-            logger.info("Loaded sheets")
-            self.data_cache = await asyncio.to_thread(self.sheet_all_items.get_all_values)
-            self.suggestions_cache = await asyncio.to_thread(self.sheet_suggestions.get_all_values)
-            self.calculations_cache = await asyncio.to_thread(self.sheet_calculations.get_all_values)
+            if self.google_client is None:
+                self.google_client = await call_google_api()
+
+            sheet_all_items = self.google_client.open_by_key(sheet_id).worksheet('Alle Items')
+            sheet_suggestions = self.google_client.open_by_key(sheet_id).worksheet('Anpassungen')
+            sheet_calculations = self.google_client.open_by_key(sheet_id).worksheet('Berechnungen')
+
+            # Fetch data and cache it
+            data_cache = await asyncio.to_thread(sheet_all_items.get_all_values)
+            suggestions_cache = await asyncio.to_thread(sheet_suggestions.get_all_values)
+            calculations_cache = await asyncio.to_thread(sheet_calculations.get_all_values)
+
+            # Cache the sheets
+            self.sheet_cache[sheet_id] = {
+                'data_cache': data_cache,
+                'suggestions_cache': suggestions_cache,
+                'calculations_cache': calculations_cache,
+                'sheet_all_items': sheet_all_items,
+                'sheet_suggestions': sheet_suggestions,
+                'sheet_calculations': sheet_calculations
+            }
+
+            logger.info(f"Loaded and cached data for sheet ID: {sheet_id}")
+            return self.sheet_cache[sheet_id]
         except Exception as e:
             logger.error(f'Error loading sheet: {e}')
+            raise
     
-    async def update_sheet(self):
-        await self.load_sheet(sheet_id)
-        logger.info('Sheet updated successfully')
+    async def get_data_for_guild(self, guild_id):
+        # Combine both functions to get sheet id and load sheet
+        sheet_id = await self.get_spreadsheet_id_for_guild(guild_id)
+        sheet_data = await self.load_sheet(sheet_id)
+        return sheet_data
+    
         
     async def item_autocomplete(self, interaction: discord.Interaction, current: str) -> list[discord.app_commands.Choice[str]]:
-            if self.data_cache is None:
-                await self.load_sheet(sheet_id)
             try:
-                
-                item_names = [row[0] for row in self.data_cache[1:]]  # Items in column A
+                guild_id = interaction.guild.id
+                sheet_data = await self.get_data_for_guild(guild_id)
+                data= sheet_data['data_cache']
+                item_names = [row[0] for row in data[1:]]  # Items in column A
 
                 # Filter and provide auto-complete choices
                 choices = [discord.app_commands.Choice(name=item, value=item) for item in item_names if current.lower() in item.lower()]
@@ -103,23 +149,26 @@ class SheetsCog(commands.Cog):
             return "Taler"
         return None
     
-    ##@discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    # @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.command(name='update', description='Lädt die aktuelle Preise des Google Sheets. Muss nach manuellen Preisänderungen ausgeführt werden.')
     async def update(self, interaction:discord.Interaction):
         await interaction.response.defer()
-        await self.load_sheet(sheet_id)
+        await self.load_sheet(default_spreadsheet_id)
+        await self.load_sheet(os.getenv('STERNENGARDE_SPREADSHEET_ID'))
         await interaction.followup.send('Die Liste wurde aktualisiert')
     
         
     @discord.app_commands.autocomplete(name=item_autocomplete)
-    ##@discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
+    # @discord.app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in guild_ids])
     @discord.app_commands.command(name="suche", description="sucht einen Gegenstand und gibt den Listenpreis an")
     @discord.app_commands.describe(name="Name des gesuchten Gegenstandes", menge="Optional: gewünschte Menge", marge="Optional: gewünschte Marge in Prozent")
     async def search(self, interaction:discord.Interaction, name:str, menge:int = 1, marge: float = None):
-        if self.data_cache is None:
-            await self.load_sheet(sheet_id)
+        
         try:
-            data = self.data_cache
+            guild_id = interaction.guild.id
+            sheet_data = await self.get_data_for_guild(guild_id)
+            data= sheet_data['data_cache']
+            #data = self.data_cache
             item_names = [row[0] for row in data[1:]] # items in column A
             prices = [
                 float(row[1].replace('€', '').replace('.', '').replace(',', '.').strip())
@@ -190,12 +239,11 @@ class SheetsCog(commands.Cog):
     @discord.app_commands.describe(item="Name des Gegenstandes", neuer_preis="Neuer Preisvorschlag")
     @discord.app_commands.command(name="preisanpassung", description="Schlage eine Preisänderung vor")
     @discord.app_commands.autocomplete(item=item_autocomplete)
-    async def price_suggestion(self, interaction:discord.Interaction, item: str, neuer_preis: float):
-        if self.data_cache is None:
-            await self.load_sheet(sheet_id)
-        
+    async def price_suggestion(self, interaction:discord.Interaction, item: str, neuer_preis: float):    
         try:
-            data = self.data_cache
+            guild_id = interaction.guild.id
+            sheet_data = await self.get_data_for_guild(guild_id)
+            data= sheet_data['suggestions_cache']
             item_names = [row[0] for row in data[1:]]
             if item not in item_names:
                 await interaction.response.send_message(f'Item {item} ist nicht in der Liste. Mit dem Command "/item-vorschlagen" kannst du fehlende Items melden.')
@@ -211,7 +259,7 @@ class SheetsCog(commands.Cog):
             old_price = prices[index]
             user = interaction.user.name
             suggestion_row = [timestamp,item, old_price, neuer_preis, user]
-            await asyncio.to_thread(self.sheet_suggestions.append_row,suggestion_row,table_range='A:E')
+            await asyncio.to_thread(sheet_data['sheet_suggestions'].append_row,suggestion_row,table_range='A:E')
             taler_icon = self.get_custom_emoji()
             await interaction.response.send_message(f'Preisanpassung für **{item}** von {old_price}{taler_icon} auf **{neuer_preis}{taler_icon}** vorgeschlagen. Der Stadtrat schaut sich die Vorschläge regelmässig an und nimmt wenn nötig, Änderungen an den Preisen vor.')
             logger.info(f'Price adjustment for {item} suggested by {user}: {old_price} -> {neuer_preis}')
@@ -224,17 +272,19 @@ class SheetsCog(commands.Cog):
     @discord.app_commands.command(name='neues-item', description='Schlägt ein fehlendes Item vor.')
     @discord.app_commands.describe(item="Name des fehlenden Gegenstandes")
     async def new_item_suggestion(self, interaction: discord.Interaction, item: str):
-        if self.data_cache is None:
-            await self.load_sheet(sheet_id)
-
         try:
+            guild_id = interaction.guild.id
+            sheet_data = await self.get_data_for_guild(guild_id)
+            data= sheet_data['data_cache']
+            suggestions_cache = sheet_data['suggestions_cache']
+            sheet_suggestions = sheet_data['sheet_suggestions']
             # Validate item
-            item_names = [row[0] for row in self.data_cache[1:]]
+            item_names = [row[0] for row in data[1:]]
             if item in item_names:
                 await interaction.response.send_message(f'**{item}** ist bereits in der Liste.')
                 return
             # Validate item in new items cache
-            suggested_items = [row[1] for row in self.suggestions_cache[1:]]  # Items in column H
+            suggested_items = [row[1] for row in suggestions_cache[1:]]  # Items in column H
             if item in suggested_items:
                 await interaction.response.send_message(f'**{item}** wurde bereits vorgeschlagen.')
                 return
@@ -242,9 +292,9 @@ class SheetsCog(commands.Cog):
             timestamp = datetime.now().strftime("%d.%m.%y")
             user = interaction.user.name
             suggestion_row = [timestamp, item, user]
-            self.sheet_suggestions.append_row(suggestion_row, table_range='G:I')
+            await asyncio.to_thread(sheet_suggestions.append_row, suggestion_row, table_range='G:I')
             # Update new items cache
-            self.suggestions_cache.append([timestamp, item, user])
+            await asyncio.to_thread(suggestions_cache.append_row, [timestamp, item, user], table_range='G:I')
 
             await interaction.response.send_message(f'Der Gegenstand **{item}** wird geprüft und sobald möglich der Liste hinzugefügt. Danke für die Meldung. Nutze den Befehl um weitere Gegenstände zu melden.')
             logger.info(f'New item {item} suggested by {user}')
@@ -259,11 +309,11 @@ class SheetsCog(commands.Cog):
     @discord.app_commands.describe(item="Name des Gegenstandes")
     @discord.app_commands.autocomplete(item=item_autocomplete)
     async def recipe(self, interaction: discord.Interaction, item: str):
-        if self.data_cache is None or self.calculations_cache is None:
-            await self.load_sheet(sheet_id)
-
         try:
-            data = self.data_cache
+            guild_id = interaction.guild.id
+            sheet_data = await self.get_data_for_guild(guild_id)
+            data= sheet_data['data_cache']
+            calculations_cache = sheet_data['calculations_cache']
             item_names = [row[0] for row in data[1:]]
             if item not in item_names:
                 await interaction.response.send_message(f'Item {item} ist nicht in der Liste. Mit dem Command "/item-vorschlagen" kannst du fehlende Items melden.')
@@ -284,7 +334,7 @@ class SheetsCog(commands.Cog):
             # Find the item row in calculations sheet
             item_row = None
             item_column = None
-            for row in self.calculations_cache:
+            for row in calculations_cache:
                 if row[3] == item:
                     item_row = row
                     item_column = "D"
@@ -355,12 +405,14 @@ class SheetsCog(commands.Cog):
     @discord.app_commands.describe(item="Name des Gegenstandes", explanation="Erklärung des Fehlers")
     @discord.app_commands.autocomplete(item=item_autocomplete)
     async def report_recipe_error(self, interaction: discord.Interaction, item: str, explanation: str):
-        if self.data_cache is None:
-            await self.load_sheet(sheet_id)
+      
 
         try:
+            guild_id = interaction.guild.id
+            sheet_data = await self.get_data_for_guild(guild_id)
+            data= sheet_data['data_cache']
             # Validate item
-            item_names = [row[0] for row in self.data_cache[1:]]
+            item_names = [row[0] for row in data[1:]]
             if item not in item_names:
                 await interaction.response.send_message(f'Item {item} ist nicht in der Liste. Mit dem Command "/item-vorschlagen" kannst du fehlende Items melden.')
                 return
@@ -369,7 +421,7 @@ class SheetsCog(commands.Cog):
             timestamp = datetime.now().strftime("%d.%m.%y")
             user = interaction.user.name
             report_row = [timestamp, item, explanation, user]
-            self.sheet_suggestions.append_row(report_row, table_range='K:N')
+            await asyncio.to_thread(self.sheet_suggestions.append_row, report_row, table_range='K:N')
 
             await interaction.response.send_message(f'Fehlerbericht für **{item}** wurde eingereicht. Vielen Dank für deine Rückmeldung. Der Stadtrat wird sich darum kümmern.')
             logger.info(f'Recipe error reported for {item} by {user}: {explanation}')
@@ -381,10 +433,12 @@ class SheetsCog(commands.Cog):
    
    # Function to find and print all duplicate items
     async def find_and_print_duplicates(self):
-        if self.data_cache is None:
-            await self.load_sheet(sheet_id)
+        if not self.sheet_cache:
+            await self.load_sheet(default_spreadsheet_id)
         try:
-            item_names = [row[0] for row in self.data_cache[1:] if row[0]]  # Exclude empty strings
+            item_names = [row[0] for row in self.sheet_cache[default_spreadsheet_id]['data_cache'][1:] if row[0]]
+            
+            
             duplicates = set([item for item in item_names if item_names.count(item) > 1])
             if duplicates:
                 logger.info(f'Duplicate items found: {duplicates}')
@@ -396,7 +450,7 @@ class SheetsCog(commands.Cog):
 async def setup(bot: commands.Bot):
     try:
         sheets_cog = SheetsCog(bot)
-        await sheets_cog.load_sheet(sheet_id)
+        #await sheets_cog.load_sheet(sheet_id)
         await bot.add_cog(sheets_cog)
         await sheets_cog.find_and_print_duplicates()
         logger.info('SheetsCog loaded and Google Sheet loaded successfully.')
